@@ -11,7 +11,7 @@ TMP = os.path.join(BASE, "tmp")
 os.makedirs(DAYS, exist_ok=True)
 os.makedirs(TMP, exist_ok=True)
 
-app = Flask(__name__, static_folder="static")
+app = Flask(__name__, static_folder=None)
 MOODS = list(LOOKS)
 MODEL = "claude-sonnet-5-5"
 
@@ -131,9 +131,36 @@ def analyze_free(text, song, imgs):
             "palette": palette, "caption": CAPTION[mood], "reason": reason, "engine": "rules"}
 
 
+# Страница и картинки ищутся в папке static, а если её нет (например, файлы загружены на GitHub без папок),
+# то рядом с app.py. Так проект запускается при любой раскладке. Отдаются только безопасные типы файлов.
+SAFE_EXT = (".html", ".js", ".css", ".jpg", ".jpeg", ".png", ".webp")
+
+
+def _static_dir(name):
+    for d in (os.path.join(BASE, "static"), BASE):
+        if os.path.isfile(os.path.join(d, name)):
+            return d
+    return None
+
+
 @app.get("/")
 def index():
-    return send_from_directory("static", "index.html")
+    d = _static_dir("index.html")
+    if d is None:
+        return "Не найден index.html: положите его в папку static или рядом с app.py", 404
+    return send_from_directory(d, "index.html")
+
+
+@app.get("/static/<path:p>")
+def static_files(p):
+    name = os.path.basename(p)
+    if not name.lower().endswith(SAFE_EXT):
+        return "Not found", 404
+    full = os.path.join(BASE, "static", p)
+    if os.path.isfile(full) and os.path.realpath(full).startswith(os.path.realpath(os.path.join(BASE, "static"))):
+        return send_from_directory(os.path.join(BASE, "static"), p)
+    d = _static_dir(name)
+    return send_from_directory(d, name) if d else ("Not found", 404)
 
 
 @app.get("/days/<path:p>")
