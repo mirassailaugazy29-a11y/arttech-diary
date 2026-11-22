@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Дневник атмосферы</title>
+<style>
+  :root { color-scheme: dark; --navy0: #060c1d; --blue: #2f6bff; --blue2: #6fa8ff; --white: #f4f8ff; --muted: #9db3d9; --orange: #ff9d3d; --line: rgba(130,175,255,.22); --glass: rgba(12,24,56,.66); }
+  html { background: var(--navy0); }
+  body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: transparent; color: var(--white); min-height: 100vh; }
+  .bg { position: fixed; inset: 0; z-index: -2; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(2, 1fr); overflow: hidden; background: var(--navy0); }
+  .bg .tile { overflow: hidden; }
+  .bg img { width: 100%; height: 100%; object-fit: cover; display: block; filter: blur(4px) saturate(1.15) brightness(.85); animation: bgdrift 26s ease-in-out infinite alternate; }
+  @keyframes bgdrift { from { transform: scale(1.12) translate(-1.5%, 0); } to { transform: scale(1.26) translate(1.5%, -1%); } }
+  .bgov { position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background: radial-gradient(700px 420px at 92% -5%, rgba(255,157,61,.20), transparent 70%), radial-gradient(900px 600px at 0% 110%, rgba(47,107,255,.25), transparent 70%), linear-gradient(180deg, rgba(6,12,29,.45), rgba(8,18,44,.72)); }
+  header { display: flex; gap: 10px; align-items: center; padding: 14px 22px; border-bottom: 1px solid var(--line); background: rgba(6,12,29,.55); backdrop-filter: blur(10px); position: sticky; top: 0; z-index: 10; }
+  header h1 { font-size: 18px; margin: 0 auto 0 0; font-weight: 700; letter-spacing: .02em; display: flex; align-items: center; gap: 10px; }
+  header h1::before { content: ""; width: 12px; height: 12px; border-radius: 50%; background: var(--orange); box-shadow: 0 0 12px var(--orange); }
+  button { background: rgba(47,107,255,.16); color: var(--white); border: 1px solid var(--line); border-radius: 999px; padding: 9px 18px; cursor: pointer; font-size: 14px; transition: background .2s, border-color .2s; }
+  button:hover { background: rgba(47,107,255,.34); border-color: var(--blue2); }
+  button.tab.on { background: var(--blue); border-color: var(--blue2); }
+  button.primary { background: linear-gradient(135deg, #ffb35c, #ff8a1f); border-color: transparent; color: #0a1530; font-weight: 700; }
+  button.primary:hover { filter: brightness(1.08); }
+  button:disabled { opacity: .5; cursor: wait; }
+  main { max-width: 680px; margin: 0 auto; padding: 24px 20px 48px; }
+  .panel { background: var(--glass); border: 1px solid var(--line); border-radius: 18px; padding: 8px 22px 22px; backdrop-filter: blur(14px); }
+  label { display: block; margin: 16px 0 6px; font-size: 13px; color: var(--muted); letter-spacing: .02em; }
+  textarea, input[type=text], select { width: 100%; box-sizing: border-box; background: rgba(6,12,29,.7); color: var(--white); border: 1px solid var(--line); border-radius: 12px; padding: 11px 13px; font: inherit; }
+  textarea:focus, input[type=text]:focus, select:focus { outline: none; border-color: var(--blue2); box-shadow: 0 0 0 3px rgba(47,107,255,.25); }
+  input[type=file] { color: var(--muted); font-size: 13px; }
+  textarea { min-height: 110px; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  label.sel { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 13px; }
+  label.sel select { width: auto; padding: 8px 10px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin: 14px auto 0; max-width: 460px; }
+  .chip { padding: 6px 14px; font-size: 13px; color: var(--muted); }
+  .chip.on { background: var(--blue); border-color: var(--blue2); color: var(--white); box-shadow: 0 0 0 2px rgba(255,157,61,.45); }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+  #msg { margin-top: 12px; color: var(--orange); font-size: 14px; }
+
+  /* ---- Карточка воспоминания (постоянные элементы: формат 4:5, дата сверху, подпись снизу) ---- */
+  #stage { position: relative; width: min(100%, 420px); aspect-ratio: 4/5; margin: 20px auto; overflow: hidden; border-radius: 16px; background: #000; box-shadow: 0 20px 60px rgba(0,0,0,.5), 0 0 0 1px rgba(130,175,255,.25); }
+  #stage::before { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 32%; background: linear-gradient(transparent, rgba(0,0,0,.6)); pointer-events: none; z-index: 3; }
+  .cap, .date { z-index: 4; }
+  .sl { z-index: 0; }
+  /* переходы между фото зависят от настроения */
+  #stage[data-tr="blur"] .sl { filter: blur(14px); transition: opacity 1.8s, filter 1.8s; }
+  #stage[data-tr="blur"] .sl.on { filter: blur(0); }
+  #stage[data-tr="wipe"] .sl { transition: opacity 0s .9s; }
+  #stage[data-tr="wipe"] .sl.on { transition: none; z-index: 2; animation: wipe .9s ease-out; }
+  #stage[data-tr="flash"] .sl { transition: opacity .35s; }
+  #stage[data-tr="flash"] .sl.on { animation: flash .7s ease-out; }
+  @keyframes wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+  @keyframes flash { 0% { filter: brightness(3.2) contrast(.7); } 100% { filter: brightness(1); } }
+  #stage > .tint, #stage > .haze, #stage > .leak, #stage > .grain, #stage > canvas, #stage > .fireglow { z-index: 3; }
+  .date { animation: fadein 2s; }
+  .cap.hw { animation: hw 3.4s ease-out both; }
+  @keyframes hw { from { clip-path: inset(-15% 100% -15% 0); } to { clip-path: inset(-15% 0 -15% 0); } }
+  @keyframes fadein { from { opacity: 0; } to { opacity: 1; } }
+  /* звёзды */
+  .star { position: absolute; aspect-ratio: 1; border-radius: 50%; transform: translate(-50%, -50%); mix-blend-mode: screen; background: radial-gradient(circle, #fff 0%, rgba(255,255,255,.5) 35%, transparent 70%); animation: st 3s ease-in-out infinite; }
+  @keyframes st { 0%,100% { opacity: .2; scale: .7; } 50% { opacity: 1; scale: 1.25; } }
+  /* огонь свечи и камина */
+  .glow.flame { background: radial-gradient(circle, #fff6d0 0%, rgba(255,190,80,.95) 22%, rgba(255,110,30,.5) 50%, transparent 74%); animation: fl 1.2s ease-in-out infinite; }
+  @keyframes fl { 0% { opacity: .6; scale: .9 1; } 15% { opacity: 1; scale: 1.1 1.3; } 32% { opacity: .65; scale: .85 1.05; } 47% { opacity: .95; scale: 1.05 1.35; } 63% { opacity: .55; scale: .9 1; } 80% { opacity: 1; scale: 1.1 1.25; } 100% { opacity: .6; scale: .9 1; } }
+  .fireglow { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen; background: radial-gradient(ellipse 70% 45% at 50% 105%, rgba(255,140,40,.6), transparent 70%); animation: fire 1.9s ease-in-out infinite; }
+  @keyframes fire { 0%,100% { opacity: .35; } 18% { opacity: .85; } 35% { opacity: .5; } 52% { opacity: .95; } 70% { opacity: .4; } 85% { opacity: .8; } }
+  /* покачивание веток: верхняя часть кадра слегка колышется */
+  .sway { -webkit-mask-image: linear-gradient(#000 0%, #000 38%, transparent 62%); mask-image: linear-gradient(#000 0%, #000 38%, transparent 62%); transform-origin: 50% 62%; animation: sway 5.5s ease-in-out infinite alternate; }
+  @keyframes sway { from { transform: rotate(-.32deg) translateX(-.25%); } to { transform: rotate(.32deg) translateX(.25%); } }
+  /* плывущие облака в верхней части дневных кадров */
+  .clouds { position: absolute; left: 0; right: 0; top: 0; height: 45%; overflow: hidden; pointer-events: none; mix-blend-mode: screen; opacity: .45; -webkit-mask-image: linear-gradient(#000 40%, transparent); mask-image: linear-gradient(#000 40%, transparent); }
+  .ct { position: absolute; inset: 0; width: 200%; display: flex; animation: cl 90s linear infinite; }
+  .ct i { flex: 0 0 50%; background: radial-gradient(ellipse 16% 30% at 15% 40%, rgba(255,255,255,.9), transparent 70%), radial-gradient(ellipse 20% 26% at 48% 58%, rgba(255,255,255,.8), transparent 70%), radial-gradient(ellipse 14% 24% at 80% 35%, rgba(255,255,255,.85), transparent 70%); }
+  @keyframes cl { to { transform: translateX(-50%); } }
+  .sl { position: absolute; inset: 0; opacity: 0; transition: opacity 1.2s; }
+  .sl.on { opacity: 1; }
+  .sl.on .cam { animation: var(--anim) var(--dur) linear forwards; }
+  .sc { position: absolute; }
+  .cam { position: absolute; inset: 0; }
+  .cam img { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+  .glow, .spark, .glint { position: absolute; aspect-ratio: 1; border-radius: 50%; mix-blend-mode: screen; transform: translate(-50%, -50%); }
+  .glow { background: radial-gradient(circle, #fff 0%, rgba(255,232,170,.95) 18%, rgba(255,170,70,.45) 45%, transparent 72%); animation: tw 2.4s ease-in-out infinite; }
+  .spark { background: radial-gradient(circle, #fff 0%, rgba(190,225,255,.7) 35%, transparent 70%); animation: sp 2.2s ease-in-out infinite; }
+  .glint { background: radial-gradient(circle, #fff 0%, rgba(255,255,255,.6) 30%, transparent 65%); animation: gl 1.6s ease-in-out infinite; }
+  @keyframes tw { 0% { opacity: .55; scale: .9; } 14% { opacity: 1; scale: 1.12; } 30% { opacity: .7; scale: .95; } 48% { opacity: 1; scale: 1.08; } 63% { opacity: .6; scale: .9; } 80% { opacity: .95; scale: 1.1; } 100% { opacity: .55; scale: .9; } }
+  @keyframes sp { 0%,100% { opacity: 0; scale: .4; } 50% { opacity: .8; scale: 1.2; } }
+  @keyframes gl { 0%,100% { opacity: 0; scale: .3; } 4% { opacity: .65; scale: 1; } 10% { opacity: 0; } }
+  /* атмосфера: дымка и плёночные засветы медленно плывут поверх кадра */
+  .haze { position: absolute; inset: -20%; pointer-events: none; mix-blend-mode: screen; opacity: .4;
+    background: radial-gradient(ellipse 40% 25% at 30% 60%, rgba(220,230,255,.5), transparent 70%), radial-gradient(ellipse 45% 30% at 75% 40%, rgba(255,255,255,.4), transparent 70%);
+    animation: haze 18s ease-in-out infinite alternate; }
+  @keyframes haze { from { transform: translate(-6%, 2%) scale(1); } to { transform: translate(6%, -3%) scale(1.15); } }
+  .leak { position: absolute; inset: -30%; pointer-events: none; mix-blend-mode: screen; opacity: .5;
+    background: linear-gradient(115deg, transparent 30%, rgba(255,150,60,.35) 45%, rgba(255,90,60,.2) 55%, transparent 70%);
+    animation: leak 14s ease-in-out infinite alternate; }
+  @keyframes leak { from { transform: translateX(-22%); } to { transform: translateX(22%); } }
+  .tint { position: absolute; inset: 0; mix-blend-mode: multiply; pointer-events: none; }
+  .grain { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+  .date { position: absolute; top: 14px; left: 16px; font-size: 12px; letter-spacing: .15em; text-transform: uppercase; color: #fff; text-shadow: 0 1px 4px #0008; }
+  .cap { position: absolute; left: 16px; right: 16px; bottom: 18px; font-size: 22px; line-height: 1.2; color: #fff; text-shadow: 0 1px 6px #000a; }
+  @keyframes drift { from { transform: scale(1.05) translate(0,0); } to { transform: scale(1.16) translate(-2%,-2%); } }
+  @keyframes zoom  { from { transform: scale(1); } to { transform: scale(1.3); } }
+  @keyframes still { from { transform: scale(1.02); } to { transform: scale(1.04); } }
+
+  .info { font-size: 14px; color: var(--muted); text-align: center; margin: 8px auto; max-width: 420px; }
+  .info b { color: var(--white); font-size: 16px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+  .item { cursor: pointer; background: var(--glass); border-radius: 14px; overflow: hidden; border: 1px solid var(--line); backdrop-filter: blur(10px); transition: transform .2s, border-color .2s; }
+  .item:hover { transform: translateY(-3px); border-color: var(--orange); }
+  .item img { width: 100%; aspect-ratio: 4/5; object-fit: cover; display: block; }
+  .item div { padding: 8px 10px; font-size: 13px; }
+  .hidden { display: none; }
+</style>
+</head>
+<body>
+<div class="bg" id="bg"></div><div class="bgov"></div>
+<header>
+  <h1>Дневник атмосферы</h1>
+  <button id="tabNew" class="tab on">Новый день</button>
+  <button id="tabArch" class="tab">Архив</button>
+</header>
+
+<main>
+  <section id="viewNew" class="panel">
+    <label>Как прошёл твой день?</label>
+    <textarea id="text" placeholder="Гуляли по парку, всё в жёлтых листьях, было холодно, но мы пили какао..."></textarea>
+    <label>Песня дня (исполнитель, название, жанр — это попадёт в анализ)</label>
+    <input type="text" id="song" placeholder="Frank Sinatra — Fly Me to the Moon">
+    <label>Файл песни (необязательно, для воспроизведения)</label>
+    <input type="file" id="audio" accept="audio/*">
+    <label>Фото (1–5 штук)</label>
+    <input type="file" id="photos" accept="image/*" multiple>
+    <div class="two">
+      <div><label>Переход между фото</label><select id="trForm"><option value="auto">Авто (по настроению)</option><option value="fade">Плавное растворение</option><option value="flash">Вспышка</option><option value="blur">Размытие</option><option value="wipe">Шторка</option></select></div>
+      <div><label>Подпись</label><select id="capForm"><option value="auto">Авто (по настроению)</option><option value="type">По буквам</option><option value="hand">Как от руки</option><option value="none">Сразу целиком</option></select></div>
+    </div>
+    <div class="row"><button class="primary" id="go">Создать воспоминание</button></div>
+    <div id="msg"></div>
+  </section>
+
+  <section id="viewArch" class="hidden"><div class="grid" id="grid"></div></section>
+
+  <div id="player" class="hidden">
+    <div id="stage"></div>
+    <div class="info" id="info"></div>
+    <div class="row" style="justify-content:center">
+      <button id="play">▶ Смотреть</button>
+      <button class="primary hidden" id="save">Сохранить день</button>
+    </div>
+    <div class="row" style="justify-content:center">
+      <label class="sel">Переход <select id="trPlay"><option value="auto">Авто</option><option value="fade">Растворение</option><option value="flash">Вспышка</option><option value="blur">Размытие</option><option value="wipe">Шторка</option></select></label>
+      <label class="sel">Подпись <select id="capPlay"><option value="auto">Авто</option><option value="type">По буквам</option><option value="hand">От руки</option><option value="none">Сразу</option></select></label>
+    </div>
+    <div class="chips" id="fxChips"></div>
+  </div>
+</main>
+
+<script>
+// ========== ВИЗУАЛЬНАЯ СИСТЕМА: правила «настроение → форма». Меняйте и дополняйте здесь! ==========
+const RULES = {
+  calm_warm:   { tr: "fade", name: "Тёплый спокойный", ref: "Моне, мягкий свет",         filter: "sepia(.4) saturate(1.2) brightness(1.03)",  slide: 6500, anim: "drift", grain: .30, tint: .25, font: "Georgia, serif" },
+  energetic:   { tr: "flash", name: "Энергичный",       ref: "Кандинский, резкий ритм",   filter: "contrast(1.3) saturate(1.5)",               slide: 2200, anim: "zoom",  grain: .15, tint: .20, font: "'Arial Black', Arial, sans-serif" },
+  tense_cold:  { tr: "wipe", name: "Холодный собранный", ref: "Геометрия, жёсткая сетка", filter: "grayscale(.5) contrast(1.25) hue-rotate(185deg) saturate(.8)", slide: 2800, anim: "zoom", grain: .25, tint: .35, font: "'Courier New', monospace" },
+  melancholic: { tr: "blur", name: "Меланхоличный",    ref: "Плёнка, много воздуха",     filter: "grayscale(.5) brightness(.9) contrast(.9)", slide: 7500, anim: "still", grain: .45, tint: .30, font: "Georgia, serif" },
+  joyful:      { tr: "wipe", name: "Радостный",        ref: "Яркий коллаж",              filter: "saturate(1.5) brightness(1.08)",            slide: 3200, anim: "drift", grain: .10, tint: .10, font: "'Trebuchet MS', sans-serif" },
+  winter_dreamy:{ tr: "blur", name: "Зимний мечтательный", ref: "Холодный снег и тёплые огни", filter: "saturate(1.05) brightness(1.04)", slide: 6500, anim: "drift", grain: .25, tint: .14, font: "Georgia, serif" },
+  cozy_winter: { tr: "fade", name: "Уютная зима",      ref: "Тепло внутри, холод снаружи", filter: "sepia(.2) saturate(1.15)", slide: 6500, anim: "drift", grain: .30, tint: .20, font: "Georgia, serif" },
+  dreamy:      { tr: "blur", name: "Мечтательный",     ref: "Импрессионизм, дымка",      filter: "saturate(.9) brightness(1.1) contrast(.85) blur(.6px)", slide: 6000, anim: "drift", grain: .30, tint: .22, font: "Georgia, serif" },
+};
+
+const $ = s => document.querySelector(s);
+let state = { photos: [], audioFile: null, result: null, text: "", song: "" };
+let timer = null, audioEl = null;
+
+// ---------- вкладки ----------
+function show(tab) {
+  $("#tabNew").classList.toggle("on", tab === "new"); $("#tabArch").classList.toggle("on", tab === "arch");
+  $("#viewNew").classList.toggle("hidden", tab !== "new");
+  $("#viewArch").classList.toggle("hidden", tab !== "arch");
+  if (tab !== "player") $("#player").classList.add("hidden");
+  if (tab === "arch") loadArchive();
+  stop();
+}
+$("#tabNew").onclick = () => show("new");
+$("#tabArch").onclick = () => show("arch");
+
+// ---------- ресайз фото перед отправкой ----------
+async function resize(file) {
+  const bmp = await createImageBitmap(file);
+  const k = Math.min(1, 1280 / Math.max(bmp.width, bmp.height));
+  const c = document.createElement("canvas");
+  c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
+  c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+  return new Promise(r => c.toBlob(r, "image/jpeg", .85));
+}
+
+// ---------- создание воспоминания ----------
+$("#go").onclick = async () => {
+  const files = [...$("#photos").files].slice(0, 5);
+  const text = $("#text").value.trim(), song = $("#song").value.trim();
+  if (!text || !files.length || !song) { $("#msg").textContent = "Нужны текст, хотя бы одно фото и песня."; return; }
+  $("#go").disabled = true; $("#msg").textContent = "Анализирую день...";
+  try {
+    const blobs = await Promise.all(files.map(resize));
+    const fd = new FormData();
+    fd.append("text", text); fd.append("song", song);
+    blobs.forEach((b, i) => fd.append("photos", b, `p${i}.jpg`));
+    const r = await fetch("/api/analyze", { method: "POST", body: fd });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || "Ошибка сервера");
+    state = { photos: blobs, audioFile: $("#audio").files[0] || null, result: j, text, song, tr: $("#trForm").value, cap: $("#capForm").value };
+    $("#msg").textContent = "";
+    open(j.photos, j, state.audioFile ? URL.createObjectURL(state.audioFile) : null, null, true);
+  } catch (e) { $("#msg").textContent = "Ошибка: " + e.message; }
+  $("#go").disabled = false;
+};
+
+// ---------- показ воспоминания ----------
+function open(urls, res, audioUrl, date, canSave) {
+  $("#viewNew").classList.add("hidden"); $("#viewArch").classList.add("hidden");
+  $("#player").classList.remove("hidden");
+  $("#save").classList.toggle("hidden", !canSave);
+  const rule = RULES[res.mood] || RULES.calm_warm;
+  if (!canSave) { state.tr = res.tr || "auto"; state.cap = res.cap || "auto"; }
+  $("#trPlay").value = state.tr || "auto"; $("#capPlay").value = state.cap || "auto";
+  $("#info").innerHTML = `<b>${res.title}</b><br>${rule.name} · приём: ${rule.ref}<br><i>${res.reason || ""}</i>`;
+  const stage = $("#stage");
+  stage.style.setProperty("--anim", rule.anim);
+  stage.style.setProperty("--dur", (rule.slide * 1.4) + "ms");
+  const [c0, , c2] = res.palette || ["#d98e3f", "#888", "#fff"];
+  const flt = res.graded ? 'none' : rule.filter;
+  const atm = (/winter|dreamy|melancholic/.test(res.mood) || res.season === "зима" ? '<div class="haze"></div>' : '') +
+              (/calm_warm|cozy|joyful|dreamy/.test(res.mood) ? '<div class="leak"></div>' : '');
+  stage.innerHTML = urls.map((u, i) => {
+    const sc = (res.scenes || [])[i], ar = sc ? sc.w + "/" + sc.h : "4/5", wide = sc && sc.w / sc.h > 0.8;
+    const pos = wide ? "height:100%;left:50%;top:0;transform:translateX(-50%)" : "width:100%;left:0;top:50%;transform:translateY(-50%)";
+    const lights = sc ? sc.lights.map((p, k) => {
+      const cls = p.kind === "glow" && res.fire ? "glow flame" : p.kind;
+      const w = p.size * (p.kind === "glow" ? 1.25 : 1.2);
+      const dur = p.kind === "glint" ? 3.5 + (k % 6) * 0.7 : p.kind === "star" ? 2.5 + (k % 5) * 0.8 : 2.2 + (k % 6) * 0.5;
+      return `<div class="${cls}" style="left:${p.x}%;top:${p.y}%;width:${w}%;animation-delay:${-(k * 0.61) % 5}s;animation-duration:${dur}s"></div>`;
+    }).join("") : "";
+    const clouds = sc && sc.day ? '<div class="clouds"><div class="ct"><i></i><i></i></div></div>' : "";
+    return `<div class="sl"><div class="sc" style="aspect-ratio:${ar};${pos}"><div class="cam" style="filter:${flt}"><img src="${u}"><img class="sway" src="${u}">${lights}</div>${clouds}</div></div>`;
+  }).join("") +
+    `<div class="tint" style="background:${c0};opacity:${res.graded ? rule.tint * 0.5 : rule.tint}"></div>` +
+    atm + (res.fire ? '<div class="fireglow"></div>' : '') + `<div class="grain" style="opacity:${rule.grain}"></div>` +
+    `<div class="date">${date || new Date().toISOString().slice(0, 10)}</div>` +
+    `<div class="cap" style="font-family:${rule.font};color:#fff3dc;text-shadow:0 2px 8px rgba(0,0,0,.85)">${res.caption || ""}</div>`;
+  stage._rule = rule; stage._audio = audioUrl; stage._mood = res.mood;
+  stage.dataset.tr = (state.tr && state.tr !== "auto") ? state.tr : (rule.tr || "fade"); stage._cap = res.caption || "";
+  const k = {};                                                     // какие частицы включить
+  if (res.season === "зима" || res.weather === "snow" || /winter/.test(res.mood)) k.snow = 1;
+  if (res.weather === "rain") { k.rain = 1; delete k.snow; }
+  if (res.season === "осень") k.leaves = 1;
+  if (res.season === "весна") k.petals = 1;
+  if (res.season === "лето" && /вечер|ночь/.test(res.time_of_day || "")) k.fireflies = 1;
+  if (!Object.keys(k).length && /calm_warm|dreamy|joyful|cozy/.test(res.mood)) k.dust = 1;
+  if (res.fxk) { Object.keys(k).forEach(x => delete k[x]); res.fxk.forEach(x => k[x] = 1); }
+  stage._kinds = k; startFx(stage, { ...k }); fxChips(stage);
+  $("#play").onclick = () => play();
+  $("#save").onclick = saveDay;
+  play();
+}
+
+function startFx(stage, kinds) {
+  stage.querySelectorAll("canvas").forEach(c => c.remove());
+  const cv = document.createElement("canvas");
+  cv.style.cssText = "position:absolute;inset:0;width:100%;height:100%;pointer-events:none";
+  stage.appendChild(cv);
+  const ctx = cv.getContext("2d"), R = Math.random, mk = (n, f) => Array.from({ length: n }, f);
+  const snow = kinds.snow ? mk(120, () => ({ x: R(), y: R(), r: .6 + R() * 2.4, v: .08 + R() * .3, s: R() * 6.28 })) : [];
+  const rain = kinds.rain ? mk(150, () => ({ x: R(), y: R(), l: .02 + R() * .03, v: 1.1 + R() * .7 })) : [], rip = [];
+  const LC = ["#C8571B", "#E08A1E", "#B83A1B", "#D9A21B"], PC = ["#F9CFD8", "#FFE6EC", "#F4B6C6"];
+  const leaves = kinds.leaves ? mk(26, () => ({ x: R(), y: R(), r: 5 + R() * 6, v: .06 + R() * .1, s: R() * 6.28, a: R() * 6.28, va: (R() - .5) * 2.4, c: LC[(R() * 4) | 0] })) : [];
+  const petals = kinds.petals ? mk(34, () => ({ x: R(), y: R(), r: 3 + R() * 3, v: .05 + R() * .08, s: R() * 6.28, a: R() * 6.28, va: (R() - .5) * 3, c: PC[(R() * 3) | 0] })) : [];
+  const flies = kinds.fireflies ? mk(22, () => ({ x: R(), y: .35 + R() * .6, s: R() * 6.28, v: .01 + R() * .02 })) : [];
+  const dust = kinds.dust ? mk(45, () => ({ x: R(), y: R(), r: .5 + R() * 1.3, s: R() * 6.28, v: .01 + R() * .02 })) : [];
+  let last = 0;
+  function flake(f, W, H, u, t, dt, drift, fall) {          // листья и лепестки
+    f.y += f.v * dt; f.x += (Math.sin(t / 1200 + f.s) * drift + .01) * dt; f.a += f.va * dt;
+    if (f.y > 1.05) { f.y = -.05; f.x = R(); } if (f.x > 1.05) f.x = -.05;
+    ctx.save(); ctx.translate(f.x * W, f.y * H); ctx.rotate(f.a); ctx.scale(1, .35 + .65 * Math.abs(Math.cos(t / 700 + f.s)));
+    ctx.fillStyle = f.c; ctx.beginPath(); ctx.ellipse(0, 0, f.r * u, f.r * u * fall, 0, 0, 6.28); ctx.fill(); ctx.restore();
+  }
+  (function frame(t) {
+    if (!cv.isConnected) return;
+    if (cv.offsetParent) {
+      if (cv.width !== cv.clientWidth) { cv.width = cv.clientWidth; cv.height = cv.clientHeight; }
+      const W = cv.width, H = cv.height, u = W / 380, dt = Math.min(50, t - last) / 1000; last = t;
+      ctx.clearRect(0, 0, W, H);
+      const gust = .5 + Math.sin(t / 3500) * .35;
+      ctx.fillStyle = "rgba(255,255,255,.75)";
+      snow.forEach(f => {
+        f.y += f.v * dt; f.x += (gust * .04 * f.r / 2 + Math.sin(t / 1500 + f.s) * .01) * dt;
+        if (f.y > 1.05) { f.y = -.05; f.x = R(); } if (f.x > 1.05) f.x = -.05;
+        ctx.beginPath(); ctx.arc(f.x * W, f.y * H, f.r * u, 0, 6.28); ctx.fill();
+      });
+      if (rain.length) {                                      // дождь и круги на лужах
+        ctx.strokeStyle = "rgba(200,215,235,.45)"; ctx.lineWidth = Math.max(1, u);
+        rain.forEach(d => {
+          d.y += d.v * dt; d.x -= .04 * dt; if (d.y > 1) { d.y = -.05; d.x = R() * 1.1; }
+          ctx.beginPath(); ctx.moveTo(d.x * W, d.y * H); ctx.lineTo((d.x - .004) * W, (d.y - d.l) * H); ctx.stroke();
+        });
+        if (R() < dt * 7) rip.push({ x: R(), y: .68 + R() * .28, t: 0 });
+        for (let i = rip.length - 1; i >= 0; i--) {
+          const q = rip[i]; q.t += dt; if (q.t > 1.2) { rip.splice(i, 1); continue; }
+          ctx.strokeStyle = "rgba(220,230,245," + (.5 * (1 - q.t / 1.2)) + ")"; ctx.lineWidth = Math.max(1, u * .8);
+          ctx.beginPath(); ctx.ellipse(q.x * W, q.y * H, q.t * 26 * u, q.t * 8 * u, 0, 0, 6.28); ctx.stroke();
+        }
+      }
+      leaves.forEach(f => flake(f, W, H, u, t, dt, .03, .55));
+      petals.forEach(f => flake(f, W, H, u, t, dt, .05, .6));
+      flies.forEach(f => {                                    // светлячки
+        f.x += Math.sin(t / 2000 + f.s) * f.v * dt; f.y += Math.cos(t / 2500 + f.s) * f.v * dt * .6;
+        if (f.x < 0) f.x = 1; if (f.x > 1) f.x = 0;
+        const a = .25 + .75 * Math.max(0, Math.sin(t / 900 + f.s * 3)), x = f.x * W, y = f.y * H, g = ctx.createRadialGradient(x, y, 0, x, y, 11 * u);
+        g.addColorStop(0, "rgba(255,245,160," + a + ")"); g.addColorStop(1, "rgba(255,240,150,0)");
+        ctx.fillStyle = g; ctx.fillRect(x - 11 * u, y - 11 * u, 22 * u, 22 * u);
+      });
+      dust.forEach(f => {                                     // пылинки в свете
+        f.x += Math.sin(t / 3000 + f.s) * f.v * dt; f.y -= f.v * .5 * dt; if (f.y < -.02) { f.y = 1.02; f.x = R(); }
+        ctx.fillStyle = "rgba(255,244,220," + (.15 + .25 * (.5 + .5 * Math.sin(t / 1800 + f.s))) + ")";
+        ctx.beginPath(); ctx.arc(f.x * W, f.y * H, f.r * u, 0, 6.28); ctx.fill();
+      });
+    }
+    requestAnimationFrame(frame);
+  })(0);
+}
+
+function typeCap(stage) {                                     // подпись: по буквам, как от руки или сразу
+  const el = stage.querySelector(".cap"); if (!el) return;
+  const full = stage._cap || "", d = stage.querySelector(".date");
+  let mode = state.cap || "auto";
+  if (mode === "auto") mode = /tense|energetic|joyful/.test(stage._mood || "") ? "type" : "hand";
+  clearInterval(stage._ct); el.classList.remove("hw");
+  el.style.fontFamily = mode === "type" ? "'Courier New', monospace" : mode === "hand" ? "'Segoe Script','Bradley Hand','Brush Script MT','Snell Roundhand',cursive" : stage._rule.font;
+  el.style.fontSize = mode === "hand" ? "20px" : mode === "type" ? "19px" : "22px";
+  if (d) { d.style.animation = "none"; void d.offsetWidth; d.style.animation = ""; }
+  if (mode === "type") {
+    el.textContent = ""; let i = 0;
+    stage._ct = setInterval(() => { el.textContent = full.slice(0, ++i); if (i >= full.length) clearInterval(stage._ct); }, 55);
+  } else {
+    el.textContent = full;
+    if (mode === "hand") { void el.offsetWidth; el.classList.add("hw"); }
+  }
+}
+
+// ---------- переключатели: переход, подпись, частицы ----------
+$("#trPlay").onchange = e => { state.tr = e.target.value; const st = $("#stage"); st.dataset.tr = state.tr === "auto" ? (st._rule.tr || "fade") : state.tr; };
+$("#capPlay").onchange = e => { state.cap = e.target.value; typeCap($("#stage")); };
+const FXN = { snow: "Снег", rain: "Дождь", leaves: "Листья", petals: "Лепестки", fireflies: "Светлячки", dust: "Пылинки" };
+function fxChips(stage) {
+  const box = $("#fxChips");
+  box.innerHTML = Object.entries(FXN).map(([id, n]) => `<button class="chip ${stage._kinds[id] ? "on" : ""}" data-id="${id}">${n}</button>`).join("");
+  box.querySelectorAll(".chip").forEach(b => b.onclick = () => {
+    const id = b.dataset.id;
+    if (stage._kinds[id]) delete stage._kinds[id]; else stage._kinds[id] = 1;
+    b.classList.toggle("on"); startFx(stage, { ...stage._kinds });
+  });
+}
+
+// ---------- фон интерфейса: фото из архива, а пока архив пуст, примеры ----------
+async function loadBg() {
+  let urls = [];
+  try { (await (await fetch("/api/days")).json()).forEach(x => x.photos.forEach(f => urls.push("/days/" + encodeURIComponent(x.folder) + "/" + f))); urls = urls.slice(0, 6); } catch (e) {}
+  const defs = ["/static/bg/bg1.jpg", "/static/bg/bg2.jpg"];
+  for (let i = 0; urls.length < 6; i++) urls.push(defs[i % 2]);
+  $("#bg").innerHTML = urls.map((u, i) => `<div class="tile"><img src="${u}" style="animation-delay:${-i * 5}s"></div>`).join("");
+}
+
+function stop() { clearInterval(timer); if (audioEl) { audioEl.pause(); audioEl = null; } }
+
+function play() {
+  stop();
+  typeCap($("#stage"));
+  const stage = $("#stage"), imgs = [...stage.querySelectorAll(".sl")], rule = stage._rule;
+  let i = 0;
+  const showImg = () => { imgs.forEach(im => { im.classList.remove("on"); void im.offsetWidth; }); imgs[i % imgs.length].classList.add("on"); i++; };
+  showImg(); timer = setInterval(showImg, rule.slide);
+  if (stage._audio) { audioEl = new Audio(stage._audio); audioEl.loop = true; audioEl.play().catch(() => {}); }
+}
+
+// ---------- сохранение и архив ----------
+async function saveDay() {
+  $("#save").disabled = true;
+  const fd = new FormData();
+  state.result.tr = state.tr; state.result.cap = state.cap; state.result.fxk = Object.keys($("#stage")._kinds || {});
+  fd.append("result", JSON.stringify(state.result));
+  fd.append("text", state.text); fd.append("song", state.song);
+  if (state.audioFile) fd.append("audio", state.audioFile);
+  const r = await fetch("/api/save", { method: "POST", body: fd });
+  const j = await r.json();
+  $("#save").textContent = r.ok ? "Сохранено в папку: " + j.folder : "Ошибка сохранения";
+  if (r.ok) loadBg();
+}
+
+async function loadArchive() {
+  const days = await (await fetch("/api/days")).json();
+  $("#grid").innerHTML = days.length ? "" : "<p>Пока нет сохранённых дней.</p>";
+  days.forEach(d => {
+    const el = document.createElement("div"); el.className = "item";
+    const base = "/days/" + encodeURIComponent(d.folder) + "/";
+    el.innerHTML = `<img src="${base + d.photos[0]}"><div><b>${d.result.title}</b><br>${d.result.date}</div>`;
+    el.onclick = () => open(d.photos.map(p => base + p), d.result, d.audio ? base + d.audio : null, d.result.date, false);
+    $("#grid").appendChild(el);
+  });
+}
+show("new"); loadBg();
+</script>
+</body>
+</html>
